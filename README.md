@@ -20,7 +20,7 @@ Always run modules from the project root using `-m` so package imports work.
 python -m server.main
 ```
 
-2) Start one or more clients (each in its own PowerShell window):
+2) Start one or more clients (each in its own PowerShell window/terminal):
 
 ```
 python -m client.main --user user1
