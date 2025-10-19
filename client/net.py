@@ -8,8 +8,9 @@ from common.crypto import aes_key, rsa_wrap_key, encrypt_body, decrypt_body
 ENC = "utf-8"
 
 class NetClient:
-    def __init__(self, host: str, port: int, username: str, on_message: Callable[[Dict[str,Any]], None]):
+    def __init__(self, host: str, port: int, username: str, on_message: Callable[[Dict[str,Any]], None], avatar: Optional[str] = None):
         self.host, self.port, self.username = host, port, username
+        self.avatar = avatar  # user's selected avatar
         self.sock: Optional[socket.socket] = None
         self.on_message = on_message  # callback for incoming messages
         self.session_key: Optional[bytes] = None   # AES session key after key-exchange
@@ -22,11 +23,18 @@ class NetClient:
     def connect(self):
         self.sock = socket.create_connection((self.host, self.port))
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        # Send auth
+        # Send auth with avatar
         send_json(self.sock, {"type":"auth","sender":None,"to":None,"ts":self.iso_now(),
-                              "payload":{"username": self.username}})
-        # Receive RSA pub
+                              "payload":{"username": self.username, "avatar": self.avatar}})
+        # Receive response: could be RSA pub or error
         env = recv_json(self.sock)
+        if env.get("type") == "error":
+            # Server rejected auth (e.g., duplicate username)
+            code = env.get("payload", {}).get("code", "UNKNOWN")
+            self.sock.close()
+            self.sock = None
+            raise ConnectionRefusedError(f"Server error: {code}")
+        # Otherwise, expect key message with RSA pub
         server_pub = env["payload"]["server_pub_pem"]
         # Generate AES session & wrap
         self.session_key = aes_key()
@@ -114,6 +122,7 @@ class NetClient:
         try:
             while self.running:
                 env = recv_json(self.sock)
+                # Always deliver on_message; UI will marshal to main thread
                 self.on_message(env)
         except Exception:
             # Socket closed or error; notify UI
