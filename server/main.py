@@ -27,7 +27,9 @@ def send_system(msg: str, to_sock: socket.socket = None):
 
 def push_userlist():
     '''This function pushes the updated user list to all clients'''
-    env = {"type":"userlist","sender":None,"to":"*","ts":iso_now(),"payload":{"users": state.users()}}
+    users = state.users()
+    print(f"[SERVER DEBUG] Pushing userlist: {users}")  # Debug
+    env = {"type":"userlist","sender":None,"to":"*","ts":iso_now(),"payload":{"users": users}}
     for s in state.broadcast():
         send_json(s, env)
 
@@ -45,8 +47,10 @@ def handle_client(conn: socket.socket, addr):
             conn.close(); return
 
         username = env["payload"]["username"]
+        avatar_id = env["payload"].get("avatar_id", 0)  # Get avatar_id, default 0
+        print(f"[SERVER DEBUG] User {username} connecting with avatar_id: {avatar_id}")  # Debug
         
-        if not state.add_client(Client(username=username, sock=conn)):
+        if not state.add_client(Client(username=username, sock=conn, avatar_id=avatar_id)):
             # If username is already taken → reject with "DUPLICATE_USERNAME" and close
             send_json(conn, {"type":"error","sender":None,"to":None,"ts":iso_now(),"payload":{"code":"DUPLICATE_USERNAME"}})
             conn.close(); return

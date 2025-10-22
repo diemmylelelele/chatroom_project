@@ -8,8 +8,9 @@ from common.crypto import aes_key, rsa_wrap_key, encrypt_body, decrypt_body
 ENC = "utf-8"
 
 class NetClient:
-    def __init__(self, host: str, port: int, username: str, on_message: Callable[[Dict[str,Any]], None]):
+    def __init__(self, host: str, port: int, username: str, on_message: Callable[[Dict[str,Any]], None], avatar_id: int = 0):
         self.host, self.port, self.username = host, port, username
+        self.avatar_id = avatar_id  # User's avatar ID (0-1)
         self.sock: Optional[socket.socket] = None
         self.on_message = on_message  # callback for incoming messages
         self.session_key: Optional[bytes] = None   # AES session key after key-exchange
@@ -22,9 +23,9 @@ class NetClient:
     def connect(self):
         self.sock = socket.create_connection((self.host, self.port))
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        # Send auth
+        # Send auth with avatar_id
         send_json(self.sock, {"type":"auth","sender":None,"to":None,"ts":self.iso_now(),
-                              "payload":{"username": self.username}})
+                              "payload":{"username": self.username, "avatar_id": self.avatar_id}})
         # Receive RSA pub
         env = recv_json(self.sock)
         server_pub = env["payload"]["server_pub_pem"]
@@ -68,9 +69,11 @@ class NetClient:
                "payload": encrypt_body(self.session_key, body)}
         send_json(self.sock, env)
 
-    def send_file_offer(self, to_user: str, path: str, size: int):
-        ''' Send a file offer to a specific user '''
-        meta = {"name": os.path.basename(path), "size": size}
+    def send_file_offer(self, to_user: str, path: str, size: int, file_id: str):
+        ''' Send a file offer to a specific user (or broadcast with to_user="*")
+            Includes a stable file_id so receivers can request the correct file.
+        '''
+        meta = {"name": os.path.basename(path), "size": size, "file_id": file_id}
         env = {"type":"file_offer","sender":self.username,"to":to_user,"ts":self.iso_now(),
                "payload": encrypt_body(self.session_key, meta)}
         send_json(self.sock, env)
