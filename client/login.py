@@ -30,7 +30,20 @@ class LoginWindow:
         self.root = root
         self.root.title("ChatRoom Login")
         self.root.geometry("560x640")
-        self.root.resizable(False, False)
+        # Allow resizing and start maximized for a full-screen experience
+        try:
+            self.root.resizable(True, True)
+        except Exception:
+            pass
+        try:
+            self.root.state("zoomed")
+        except Exception:
+            try:
+                self.root.attributes("-fullscreen", True)
+                # Immediately toggle off to keep window decorations while sized to screen
+                self.root.after(100, lambda: self.root.attributes("-fullscreen", False))
+            except Exception:
+                pass
         
         # Set window background color
         self.root.configure(bg="#f3f3f3")

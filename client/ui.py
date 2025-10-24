@@ -12,11 +12,22 @@ CHUNK = 32 * 1024
 class ChatUI(tk.Tk):
     def __init__(self, username: str, net, avatar_id: int = 0):
         super().__init__()
-        self.title("FUV Chatroom")
-        self.geometry("900x600")
+        # Set core state
         self.username = username
         self.avatar_id = avatar_id  # Current user's avatar ID
         self.net = net
+
+        self.title(f"FUV Chatroom  |  User: {self.username}")
+        self.geometry("900x600")
+        try:
+            self.state("zoomed")
+        except Exception:
+            try:
+                # Fallback: on some platforms, use fullscreen attribute then disable to emulate maximize
+                self.attributes("-fullscreen", True)
+                self.after(100, lambda: self.attributes("-fullscreen", False))
+            except Exception:
+                pass
         
         # Dictionary to store avatar images to prevent garbage collection
         self.avatar_images = {}
@@ -24,11 +35,12 @@ class ChatUI(tk.Tk):
 
         # right pane / user list
         self.columnconfigure(0, weight=1)
-        self.columnconfigure(1, weight=0, minsize=150)
+        self.columnconfigure(1, weight=0, minsize=220)
         self.rowconfigure(1, weight=1)
 
-        header_text = f"FUV Chatroom  |  User: {self.username}"
-        header = tk.Label(self, text=header_text, bg="#a1ecf7", font=("Segoe UI", 16, "bold"))
+        # Keep the header clean without username (username is shown in window title)
+        header_text = "FUV Chatroom"
+        header = tk.Label(self, text=header_text, bg="#63C5DA", font=("Segoe UI", 17, "bold"), fg="white",  pady=7)
         header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(4,6))
 
         # message area
@@ -45,13 +57,16 @@ class ChatUI(tk.Tk):
         # user list - replaced Listbox with Canvas to draw avatar + name
         right = ttk.Frame(self)
         right.grid(row=1, column=1, sticky="nsew", padx=(4,8))
-        ttk.Label(right, text="ACTIVE", background="#a1ecf7", anchor="center", font=("Segoe UI", 10, "bold")).pack(fill="x")
+        # Header for Active users with click-to-clear-selection
+        self.active_header = ttk.Label(right, text="ACTIVE", background="#63C5DA", padding= 6,foreground="white", anchor="center", font=("Segoe UI", 10, "bold"))
+        self.active_header.pack(fill="x")
+        self.active_header.bind("<Button-1>", lambda e: self._clear_selection())
         
         # Canvas with scrollbar for userlist
         canvas_frame = ttk.Frame(right)
         canvas_frame.pack(fill="both", expand=True, pady=4)
         
-        self.user_canvas = tk.Canvas(canvas_frame, bg="white", highlightthickness=0, width=150)
+        self.user_canvas = tk.Canvas(canvas_frame, bg="white", highlightthickness=0, width=220)
         user_scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=self.user_canvas.yview)
         self.user_canvas.configure(yscrollcommand=user_scrollbar.set)
         
@@ -60,14 +75,14 @@ class ChatUI(tk.Tk):
         
         # Frame inside canvas to contain user items
         self.user_frame = tk.Frame(self.user_canvas, bg="white")
-        self.canvas_window = self.user_canvas.create_window((75, 0), window=self.user_frame, anchor="n")
+        # Align the user list content to the left edge of the canvas
+        self.canvas_window = self.user_canvas.create_window((0, 0), window=self.user_frame, anchor="nw")
         
         # Bind to update scroll region and center window
         def update_canvas(e):
+            # Keep scroll region updated and keep the content pinned to the left (no centering)
             self.user_canvas.configure(scrollregion=self.user_canvas.bbox("all"))
-            # Center the window horizontally
-            canvas_width = self.user_canvas.winfo_width()
-            self.user_canvas.coords(self.canvas_window, canvas_width // 2, 0)
+            self.user_canvas.coords(self.canvas_window, 0, 0)
         
         self.user_frame.bind("<Configure>", update_canvas)
         self.user_canvas.bind("<Configure>", update_canvas)
@@ -77,6 +92,12 @@ class ChatUI(tk.Tk):
         self.users.pack_forget()  # Hide, not used anymore
         self.selected_user = None  # Track selected user
 
+        # Allow clearing selection with Escape key
+        try:
+            self.bind("<Escape>", lambda e: self._clear_selection())
+        except Exception:
+            pass
+
         # compose area
         compose = ttk.Frame(self)
         compose.grid(row=2, column=0, columnspan=2, sticky="ew", padx=8, pady=8)
@@ -85,6 +106,38 @@ class ChatUI(tk.Tk):
         self.entry = ttk.Entry(compose)
         self.entry.grid(row=0, column=0, sticky="ew", ipady=6)
         self.entry.bind("<Return>", lambda e: self.send_text())
+        # Placeholder text for message input
+        self._has_placeholder = False
+        self._placeholder_text = "Enter your message"
+        try:
+            self._entry_fg = self.entry.cget("foreground") or "#000000"
+        except Exception:
+            self._entry_fg = "#000000"
+        self._placeholder_fg = "#9e9e9e"
+
+        def _apply_placeholder(_evt=None):
+            try:
+                if not self.entry.get().strip():
+                    self.entry.delete(0, "end")
+                    self.entry.insert(0, self._placeholder_text)
+                    self.entry.configure(foreground=self._placeholder_fg)
+                    self._has_placeholder = True
+            except Exception:
+                pass
+
+        def _remove_placeholder(_evt=None):
+            try:
+                if self._has_placeholder:
+                    self.entry.delete(0, "end")
+                    self.entry.configure(foreground=self._entry_fg)
+                    self._has_placeholder = False
+            except Exception:
+                pass
+
+        self.entry.bind("<FocusIn>", _remove_placeholder)
+        self.entry.bind("<FocusOut>", _apply_placeholder)
+        # Initialize placeholder once widgets are laid out
+        self.after(10, _apply_placeholder)
 
         # Load icons for emoji and file buttons
         self._load_button_icons()
@@ -97,8 +150,22 @@ class ChatUI(tk.Tk):
         file_btn = ttk.Button(compose, image=self.file_icon, command=self.send_file)
         file_btn.grid(row=0, column=2, padx=4)
         
-        # Send Button
-        ttk.Button(compose, text="Send ➤", command=self.send_text, width=12).grid(row=0, column=3, padx=4, ipady=8)
+        # Send Button (blue)
+        self.send_btn = tk.Button(
+            compose,
+            text="Send",
+            command=self.send_text,
+            width=10,
+            bg="#a1ecf7",
+            fg="white",
+            activebackground="#3ba6ff",
+            activeforeground="white",
+            relief="flat",
+            font=("Segoe UI", 9, "bold"),
+            bd=0,
+            cursor="hand2"
+        )
+        self.send_btn.grid(row=0, column=3, padx=4, ipady=8)
 
         # Prefer a font with colored emoji on Windows
         try:
@@ -337,10 +404,18 @@ class ChatUI(tk.Tk):
         return datetime.datetime.now().strftime("%H:%M:%S")
 
     def send_text(self):
-        raw = self.entry.get().strip()
-        if not raw:
+        # Ignore placeholder content
+        current = self.entry.get()
+        if self._has_placeholder or not current.strip():
             return
+        raw = current.strip()
         self.entry.delete(0, "end")
+        # Re-apply placeholder after sending
+        try:
+            self.entry.configure(foreground=self._entry_fg)
+            self._has_placeholder = False
+        except Exception:
+            pass
 
         # command: /w <user> message   → private
         if raw.startswith("/w "):
@@ -552,6 +627,14 @@ class ChatUI(tk.Tk):
                 self.entry.update_idletasks()
             except Exception:
                 pass
+            # Ensure placeholder is removed before inserting text
+            try:
+                if getattr(self, "_has_placeholder", False):
+                    self.entry.delete(0, "end")
+                    self.entry.configure(foreground=getattr(self, "_entry_fg", "#000000"))
+                    self._has_placeholder = False
+            except Exception:
+                pass
             
             # Set cursor at saved position (or end if none)
             pos = getattr(self, "_emoji_insert_pos", None)
@@ -655,6 +738,7 @@ class ChatUI(tk.Tk):
             
             # Update user_avatars mapping
             self.user_avatars.clear()
+            usernames_in_list = []
             
             # Create item for each user with circular avatar + name
             for i, user_info in enumerate(users):
@@ -668,10 +752,12 @@ class ChatUI(tk.Tk):
                 
                 self.user_avatars[username] = avatar_id
                 print(f"[DEBUG] User: {username}, avatar_id: {avatar_id}")  # Debug
+                usernames_in_list.append(username)
                 
                 # Create frame for each user item
                 user_frame = tk.Frame(self.user_frame, bg="white", cursor="hand2")
-                user_frame.pack(pady=3, anchor="center")
+                # Pack each user row aligned to the left; allow horizontal expansion
+                user_frame.pack(pady=3, padx=6, anchor="w", fill="x")
                 
                 # Load circular avatar
                 avatar_img = self._load_avatar(avatar_id, size=40)
@@ -686,9 +772,12 @@ class ChatUI(tk.Tk):
                 name_label.pack(side="left")
                 
                 # Bind click to select user (for private message or send file)
-                user_frame.bind("<Button-1>", lambda e, u=username: self._select_user(u))
-                avatar_label.bind("<Button-1>", lambda e, u=username: self._select_user(u))
-                name_label.bind("<Button-1>", lambda e, u=username: self._select_user(u))
+                def _on_user_click(event, u=username):
+                    self._select_user(u)
+                    return "break"  # stop event propagation so background doesn't clear
+                user_frame.bind("<Button-1>", _on_user_click)
+                avatar_label.bind("<Button-1>", _on_user_click)
+                name_label.bind("<Button-1>", _on_user_click)
                 
                 # Highlight if this is the selected user
                 if self.selected_user == username:
@@ -696,24 +785,53 @@ class ChatUI(tk.Tk):
                     avatar_label.config(bg="#e3f2fd")
                     name_label.config(bg="#e3f2fd")
             
+            # If previously selected user is no longer present, clear selection
+            if self.selected_user and self.selected_user not in usernames_in_list:
+                self.selected_user = None
+            
+            # Bind background click (empty space) to clear selection
+            try:
+                self.user_frame.bind("<Button-1>", lambda e: self._clear_selection())
+            except Exception:
+                pass
+            
             return
         
         # Call helper to process encrypted messages
         self._process_encrypted_message(env, t)
     
     def _select_user(self, username: str):
-        """Select user from Active list"""
-        self.selected_user = username
-        
+        """Select or toggle-select a user from the Active list.
+        Clicking the already selected user will unselect it."""
+        # Toggle behavior
+        if self.selected_user == username:
+            self.selected_user = None
+        else:
+            self.selected_user = username
+
         # Update highlight in user list
+        self._refresh_user_highlight()
+
+    def _clear_selection(self):
+        """Clear any selected user and update highlighting."""
+        if self.selected_user is None:
+            return
+        self.selected_user = None
+        self._refresh_user_highlight()
+
+    def _refresh_user_highlight(self):
+        """Apply highlight background to the selected user and reset others."""
+        target = self.selected_user
         for widget in self.user_frame.winfo_children():
             if isinstance(widget, tk.Frame):
-                is_selected = False
+                # Find the username label inside this frame
+                frame_username = None
                 for child in widget.winfo_children():
-                    if isinstance(child, tk.Label) and child.cget("text") == username:
-                        is_selected = True
+                    if isinstance(child, tk.Label) and child.cget("text"):
+                        # This is the name label if it has text
+                        frame_username = child.cget("text")
                         break
-                
+                is_selected = (target is not None and frame_username == target)
                 bg_color = "#e3f2fd" if is_selected else "white"
                 widget.config(bg=bg_color)
                 for child in widget.winfo_children():
