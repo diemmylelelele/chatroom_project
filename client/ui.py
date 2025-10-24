@@ -17,7 +17,6 @@ class ChatUI(tk.Tk):
         self.username = username
         self.avatar_id = avatar_id  # Current user's avatar ID
         self.net = net
-        self.net.on_message = self._on_message   # set the callback for incoming messages
         
         # Dictionary to store avatar images to prevent garbage collection
         self.avatar_images = {}
@@ -111,6 +110,10 @@ class ChatUI(tk.Tk):
 
         self.current_downloads: Dict[str, dict] = {}  # file_id -> {"name":..., "chunks":{}}
         self.current_upload: Optional[dict] = None    # {"path": str}
+
+        # NOW attach the message handler - this will flush any backlogged messages
+        # All widgets are created, so callbacks can safely update the UI
+        self.net.on_message = self._on_message
 
     def _load_button_icons(self):
         """
@@ -593,7 +596,8 @@ class ChatUI(tk.Tk):
     def _on_message(self, env: Dict[str, Any]):
         t = env.get("type")
         if t == "system":
-            self.append(f"(System) {env['payload'].get('text','')}", "system")
+            # Include timestamp for system notifications (join/leave, etc.)
+            self.append(f"(System) ({self._hhmm(env)}) {env['payload'].get('text','')}", "system")
             return
         if t == "userlist":
             users = env["payload"]["users"]

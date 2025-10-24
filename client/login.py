@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
 import os
+from typing import Optional
 
 
 class LoginWindow:
@@ -19,7 +20,7 @@ class LoginWindow:
         success: Flag indicating successful login
     """
     
-    def __init__(self, root):
+    def __init__(self, root, error_message: Optional[str] = None):
         """
         Initialize login window.
         
@@ -44,9 +45,9 @@ class LoginWindow:
         self.selected_avatar_border = []
         
         # Create widgets
-        self._create_widgets()
+        self._create_widgets(initial_error=error_message)
         
-    def _create_widgets(self):
+    def _create_widgets(self, initial_error: Optional[str] = None):
         """
         Create all widgets for login window.
         Includes: title, username entry, avatar selection, login button.
@@ -90,6 +91,17 @@ class LoginWindow:
         underline = tk.Frame(username_frame, height=2, bg="#1976D2")
         underline.pack(fill="x", padx=20)
         self.username_entry.focus()
+
+        # Inline error label (initially hidden/empty)
+        self.error_label = tk.Label(
+            username_frame,
+            text=initial_error or "",
+            font=("Segoe UI", 10),
+            fg="#d32f2f",
+            bg="#f3f3f3",
+            anchor="w"
+        )
+        self.error_label.pack(fill="x", padx=20, pady=(6, 0))
         
         # Bind Enter key for login
         self.username_entry.bind("<Return>", lambda e: self._login())
@@ -163,6 +175,13 @@ class LoginWindow:
             activebackground="#1976D2"
         )
         login_btn.pack(pady=30)
+
+    def show_error(self, msg: str):
+        """Display a red inline error under the username input."""
+        try:
+            self.error_label.config(text=msg)
+        except Exception:
+            pass
         
     def _load_avatar_image(self, index):
         """
@@ -279,7 +298,7 @@ class LoginWindow:
         self.root.destroy()
 
 
-def show_login():
+def show_login(error_message: Optional[str] = None):
     """
     Display login window and return username + avatar_id.
     
@@ -288,7 +307,7 @@ def show_login():
         tuple: (None, None) if user closes window
     """
     root = tk.Tk()
-    login_window = LoginWindow(root)
+    login_window = LoginWindow(root, error_message)
     root.mainloop()
     
     if login_window.success:

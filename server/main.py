@@ -40,6 +40,7 @@ def handle_client(conn: socket.socket, addr):
         - addr: address of the connected client 
     '''
     username = None
+    client_added = False  # Track if we successfully added this client
     try:
         env = recv_json(conn)
         if env.get("type") != "auth":  # Check if the first message is auth
@@ -48,12 +49,17 @@ def handle_client(conn: socket.socket, addr):
 
         username = env["payload"]["username"]
         avatar_id = env["payload"].get("avatar_id", 0)  # Get avatar_id, default 0
-        print(f"[SERVER DEBUG] User {username} connecting with avatar_id: {avatar_id}")  # Debug
+        print(f"[SERVER] User '{username}' attempting to connect with avatar_id: {avatar_id}")
         
         if not state.add_client(Client(username=username, sock=conn, avatar_id=avatar_id)):
             # If username is already taken → reject with "DUPLICATE_USERNAME" and close
+            print(f"[SERVER] Username '{username}' already exists, rejecting new connection")
             send_json(conn, {"type":"error","sender":None,"to":None,"ts":iso_now(),"payload":{"code":"DUPLICATE_USERNAME"}})
-            conn.close(); return
+            conn.close()
+            return
+        
+        # Client was successfully added
+        client_added = True
 
         # Send RSA public key( belong to server) for key-exchange
         send_json(conn, {"type":"key","sender":None,"to":username,"ts":iso_now(),"payload":{"server_pub_pem": RSA_PUB_PEM}})
@@ -90,7 +96,9 @@ def handle_client(conn: socket.socket, addr):
         # print for server operator
         traceback.print_exc()
     finally:
-        if username:
+        # Only remove the user if they were successfully added
+        if username and client_added:
+            print(f"[SERVER] User '{username}' disconnected, cleaning up")
             state.remove(username)
             send_system(f"{username} left the chatroom.")
             push_userlist()
