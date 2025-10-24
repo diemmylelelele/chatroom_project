@@ -288,6 +288,51 @@ class ChatUI(tk.Tk):
         
         self.append(f"(System) Downloading file '{file_info['name']}' from {file_info['sender']}...", "system")
 
+    def _show_file_offer_dialog(self, sender: str, filename: str, size: int, file_type: str, file_id: str):
+        """
+        Show a dialog asking user to accept or reject a file transfer.
+        
+        Args:
+            sender: Username of the sender
+            filename: Name of the file being offered
+            size: Size of the file in bytes
+            file_type: File extension/type
+            file_id: Unique ID for this file transfer
+        """
+        # Format the message
+        size_str = self._format_size(size)
+        msg = f"{sender} wants to send you a file:\n\n"
+        msg += f"Filename: {filename}\n"
+        msg += f"Size: {size_str}\n"
+        msg += f"Type: {file_type}\n\n"
+        msg += "Do you want to accept this file?"
+        
+        # Show Yes/No dialog
+        result = messagebox.askyesno(
+            "Incoming File",
+            msg,
+            parent=self
+        )
+        
+        if result:
+            # User accepted - send ACK and start download
+            self.append(f"(System) ({self.ts()}) Accepting file '{filename}' from {sender}...", "system")
+            self.net.send_file_ack(sender, file_id, True)
+            
+            # Initialize download context
+            self.current_downloads[file_id] = {
+                "name": filename,
+                "chunks": {},
+                "next": 0
+            }
+        else:
+            # User declined - send rejection ACK
+            self.append(f"(System) ({self.ts()}) Declined file '{filename}' from {sender}.", "system")
+            self.net.send_file_ack(sender, file_id, False)
+            # Remove from available files
+            if hasattr(self, 'available_files') and file_id in self.available_files:
+                del self.available_files[file_id]
+
     def ts(self):
         return datetime.datetime.now().strftime("%H:%M:%S")
 
@@ -564,32 +609,34 @@ class ChatUI(tk.Tk):
         
         # Use selected_user instead of Listbox selection
         if not self.selected_user:
-            # No recipient selected → broadcast to everyone without prompting
+            # No recipient selected → broadcast to everyone
             broadcast = True
         else:
             to_user = self.selected_user
             if to_user == self.username:
-                messagebox.showinfo("Invalid", "Choose another user.")
+                messagebox.showinfo("Invalid", "You cannot send a file to yourself.")
                 return
         
-        path = filedialog.askopenfilename()
+        path = filedialog.askopenfilename(title="Select file to send")
         if not path:
             return
+        
         size = os.path.getsize(path)
+        filename = os.path.basename(path)
         
         # Create unique file_id for this file
         file_id = str(uuid.uuid4())
         
         if broadcast:
+            # Send to all users
             self.net.send_file_offer("*", path, size, file_id)
-            # Display message similar to receiver side
-            self._append_file_message_sent(os.path.basename(path), size)
+            self.append(f"(System) ({self.ts()}) Sending file '{filename}' ({self._format_size(size)}) to all users...", "system")
         else:
+            # Send to specific user
             self.net.send_file_offer(to_user, path, size, file_id)
-            # Display message similar to receiver side
-            self._append_file_message_sent(os.path.basename(path), size)
+            self.append(f"(System) ({self.ts()}) Sending file '{filename}' ({self._format_size(size)}) to {to_user}...", "system")
 
-        # Save file to be ready for upload when someone downloads
+        # Save file to be ready for upload when someone accepts
         self.current_upload = {"path": path, "file_id": file_id}
 
     # --------- incoming messages ----------
@@ -688,7 +735,9 @@ class ChatUI(tk.Tk):
                 self.append(f"(Private) (From {env['sender']}) ({self._hhmm(env)}): {body['text']}", "private")
         elif t == "file_offer":
             # Received notification that a file has been sent
-            name, size = body["name"], body["size"]
+            name = body["name"]
+            size = body["size"]
+            file_type = body.get("type", "unknown")
             sender = env['sender']
             file_id = body.get("file_id", str(uuid.uuid4()))
             
@@ -699,23 +748,29 @@ class ChatUI(tk.Tk):
             self.available_files[file_id] = {
                 "name": name,
                 "size": size,
+                "type": file_type,
                 "sender": sender,
                 "file_id": file_id
             }
             
-            # Display file notification in chat with download button
-            self._append_file_message(sender, name, size, file_id)
+            # Show accept/reject dialog to user
+            self._show_file_offer_dialog(sender, name, size, file_type, file_id)
             
         elif t == "file_ack":
             if not body.get("accept"):
-                self.append(f"(System) {env['sender']} declined your file.", "system")
+                # Receiver declined the file
+                self.append(f"(System) ({self.ts()}) {env['sender']} declined your file.", "system")
             else:
-                # start upload to the ACK sender (works for direct or broadcast offers)
+                # Receiver accepted - start upload to the ACK sender (works for direct or broadcast offers)
                 if not self.current_upload:
                     return
                 fid = body["id"]
                 path = self.current_upload["path"]
                 to_user = env["sender"]
+                
+                # Show upload starting message
+                self.append(f"(System) ({self.ts()}) Sending file to {to_user}...", "system")
+                
                 seq = 0
                 with open(path, "rb") as f:
                     while True:
@@ -727,7 +782,7 @@ class ChatUI(tk.Tk):
                         # send raw bytes; NetClient will latin1-encode for JSON
                         self.net.send_file_chunk(to_user, fid, seq, b, False)
                         seq += 1
-                self.append(f"(System) Finished sending '{os.path.basename(path)}'", "system")
+                self.append(f"(System) ({self.ts()}) Finished sending '{os.path.basename(path)}' to {to_user}.", "system")
         elif t == "file_chunk":
             fid, seq, final = body["id"], body["seq"], body["final"]
             ch = body["data"].encode("latin1")
@@ -737,18 +792,27 @@ class ChatUI(tk.Tk):
                 self.current_downloads[fid] = ctx = {"name":"file.bin","chunks":{}, "next":0}
             ctx["chunks"][seq] = ch
             if final:
-                # reconstruct in order
+                # All chunks received - reconstruct file in order
                 ordered = bytearray()
                 for i in range(len(ctx["chunks"])):
                     ordered.extend(ctx["chunks"][i])
-                save = filedialog.asksaveasfilename(defaultextension="",
-                                                    initialfile=ctx["name"])
+                
+                # Ask user where to save the file
+                save = filedialog.asksaveasfilename(
+                    defaultextension="",
+                    initialfile=ctx["name"],
+                    title=f"Save file: {ctx['name']}"
+                )
+                
                 if save:
                     with open(save, "wb") as f:
                         f.write(ordered)
-                    self.append(f"(System) Saved file to {save}", "system")
+                    self.append(f"(System) ({self.ts()}) File saved to: {save}", "system")
                 else:
-                    self.append("(System) File save was canceled.", "system")
+                    self.append(f"(System) ({self.ts()}) File download cancelled.", "system")
+                
+                # Clean up download context
+                del self.current_downloads[fid]
 
     def _append_file_message(self, sender: str, filename: str, size: int, file_id: str):
         """

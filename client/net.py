@@ -115,8 +115,20 @@ class NetClient:
     def send_file_offer(self, to_user: str, path: str, size: int, file_id: str):
         ''' Send a file offer to a specific user (or broadcast with to_user="*")
             Includes a stable file_id so receivers can request the correct file.
+            Includes file metadata: name, size, type (extension)
         '''
-        meta = {"name": os.path.basename(path), "size": size, "file_id": file_id}
+        import os.path
+        filename = os.path.basename(path)
+        # Get file extension/type
+        _, ext = os.path.splitext(filename)
+        file_type = ext[1:] if ext else "unknown"  # Remove the dot from extension
+        
+        meta = {
+            "name": filename,
+            "size": size,
+            "type": file_type,
+            "file_id": file_id
+        }
         env = {"type":"file_offer","sender":self.username,"to":to_user,"ts":self.iso_now(),
                "payload": encrypt_body(self.session_key, meta)}
         send_json(self.sock, env)
