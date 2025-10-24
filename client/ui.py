@@ -186,98 +186,100 @@ class ChatUI(tk.Tk):
         """
         Load icons emoji_button.png, file_button.png and download_button.png from client/img folder
         """
-        try:
-            # Path to img folder (in client folder)
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            img_dir = os.path.join(current_dir, "img")
-            
-            # Load emoji_button.png
-            emoji_path = os.path.join(img_dir, "emoji_button.png")
-            emoji_img = Image.open(emoji_path)
-            # Resize to 28x28 pixels
-            emoji_img = emoji_img.resize((28, 28), Image.Resampling.LANCZOS)
-            self.emoji_icon = ImageTk.PhotoImage(emoji_img)
-            
-            # Load file_button.png
-            file_path = os.path.join(img_dir, "file_button.png")
-            file_img = Image.open(file_path)
-            file_img = file_img.resize((28, 28), Image.Resampling.LANCZOS)
-            self.file_icon = ImageTk.PhotoImage(file_img)
-            
-            # Load download_button.png
-            download_path = os.path.join(img_dir, "download_button.png")
-            download_img = Image.open(download_path)
-            download_img = download_img.resize((24, 24), Image.Resampling.LANCZOS)
-            self.download_icon = ImageTk.PhotoImage(download_img)
-            
-            print("✓ Successfully loaded button icons from client/img/")
-            
-        except Exception as e:
-            # Fallback: if icons cannot be loaded
-            print(f"⚠ Warning: Cannot load icons: {e}")
-            print("  Using fallback icons...")
-            
-            # Create gray fallback icons
-            fallback_img = Image.new('RGBA', (28, 28), (200, 200, 200, 255))
-            self.emoji_icon = ImageTk.PhotoImage(fallback_img)
-            self.file_icon = ImageTk.PhotoImage(fallback_img)
-            self.download_icon = ImageTk.PhotoImage(fallback_img)
+        # Helper to load an image safely
+        def _safe_load(path: str, size: tuple[int, int]):
+            try:
+                img = Image.open(path)
+                img = img.resize(size, Image.Resampling.LANCZOS)
+                return ImageTk.PhotoImage(img)
+            except Exception:
+                return None
+
+        # Paths
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        img_dir = os.path.join(current_dir, "img")
+        emoji_path = os.path.join(img_dir, "emoji_button.png")
+        file_path = os.path.join(img_dir, "file_button.png")
+        download_path = os.path.join(img_dir, "download_button.png")
+
+        # Attempt to load each icon independently
+        emoji_icon = _safe_load(emoji_path, (28, 28))
+        file_icon = _safe_load(file_path, (28, 28))
+        download_icon = _safe_load(download_path, (24, 24))
+
+        # Fallback gray icon
+        fallback28 = ImageTk.PhotoImage(Image.new('RGBA', (28, 28), (200, 200, 200, 255)))
+        fallback24 = ImageTk.PhotoImage(Image.new('RGBA', (24, 24), (200, 200, 200, 255)))
+
+        self.emoji_icon = emoji_icon or fallback28
+        self.file_icon = file_icon or fallback28
+        self.download_icon = download_icon or fallback24
+
+        if emoji_icon and file_icon:
+            print("✓ Loaded emoji/file icons")
+        if not download_icon:
+            print("⚠ download_button.png not found; using fallback for download icon")
     
     def _load_avatar(self, avatar_id: int, size: int = 40):
+        """Load an avatar image by index from client/img/avatar and mask to a circle.
+
+        - Scans the avatar folder once and caches the file list in self._avatar_files.
+        - Supports .png/.jpg/.jpeg files; sorts numerically by number in filename if present.
+        - Falls back to a simple colored circle if no files exist or loading fails.
         """
-        Load avatar image from client/img and create circular shape
-        
-        Args:
-            avatar_id: Avatar ID (0-1)
-            size: Avatar size (default 40x40)
-            
-        Returns:
-            PhotoImage of circular avatar
-        """
-        # Check cache first
+        # Cache by (id,size) to avoid reprocessing
         cache_key = f"{avatar_id}_{size}"
         if cache_key in self.avatar_images:
             return self.avatar_images[cache_key]
-        
+
+        # Build avatar file list once
+        if not hasattr(self, "_avatar_files"):
+            img_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "img", "avatar")
+            files = []
+            try:
+                for name in os.listdir(img_root):
+                    lower = name.lower()
+                    if lower.endswith((".png", ".jpg", ".jpeg")):
+                        files.append(os.path.join(img_root, name))
+            except Exception:
+                files = []
+            import re
+            def sort_key(path: str):
+                base = os.path.basename(path).lower()
+                m = re.search(r"avatar\s*(\d+)", base)
+                return (0, int(m.group(1))) if m else (1, base)
+            files.sort(key=sort_key)
+            self._avatar_files = files
+
         try:
-            # Path to avatar image
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            img_dir = os.path.join(current_dir, "img")
-            img_path = os.path.join(img_dir, f"avatar {avatar_id + 1}.png")
-            
-            print(f"[DEBUG] Loading avatar: {img_path}, avatar_id={avatar_id}")  # Debug
-            
-            # Load and resize
-            img = Image.open(img_path)
-            img = img.resize((size, size), Image.Resampling.LANCZOS)
-            
+            if self._avatar_files:
+                # Map id to available files, wrap around if out of range
+                path = self._avatar_files[avatar_id % len(self._avatar_files)]
+                img = Image.open(path)
+                img = img.resize((size, size), Image.Resampling.LANCZOS)
+            else:
+                raise FileNotFoundError("No avatar images found")
+
             # Create circular mask
             mask = Image.new('L', (size, size), 0)
             from PIL import ImageDraw
             draw = ImageDraw.Draw(mask)
             draw.ellipse((0, 0, size, size), fill=255)
-            
-            # Apply mask
             img.putalpha(mask)
-            
-            # Convert to PhotoImage and save to cache
+
             photo = ImageTk.PhotoImage(img)
             self.avatar_images[cache_key] = photo
             return photo
-            
         except Exception as e:
-            print(f"Cannot load avatar {avatar_id + 1}: {e}")
-            # Create fallback circular colored avatar
-            colors = ["#FFB6C1", "#ADD8E6"]
-            img = Image.new("RGBA", (size, size), colors[avatar_id % len(colors)] + "FF")
-            
-            # Create circular mask
+            # Fallback circular colored avatar
+            colors = [(255, 182, 193, 255), (173, 216, 230, 255)]  # RGBA
+            clr = colors[avatar_id % len(colors)]
+            img = Image.new("RGBA", (size, size), clr)
             mask = Image.new('L', (size, size), 0)
             from PIL import ImageDraw
             draw = ImageDraw.Draw(mask)
             draw.ellipse((0, 0, size, size), fill=255)
             img.putalpha(mask)
-            
             photo = ImageTk.PhotoImage(img)
             self.avatar_images[cache_key] = photo
             return photo
