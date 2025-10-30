@@ -8,6 +8,7 @@ class Client:   # container class for storing info about each client
     username: str     # unique username
     sock: socket.socket  # socket connected to the client
     aes_key: Optional[bytes] = None    # Optional AES key for encrypting/decrypting messages
+    avatar_id: int = 0   # User's avatar ID (0-1, default 0)
 
 class ServerState:
     # This class manages all connected clients on the server
@@ -34,9 +35,9 @@ class ServerState:
             return self.clients.get(username)
 
     def users(self):
-        ''' This function retrieves a list of all usernames in the server state'''
+        ''' This function retrieves a list of all usernames with their avatar_ids in the server state'''
         with self.lock:
-            return list(self.clients.keys())
+            return [{"username": u, "avatar_id": c.avatar_id} for u, c in self.clients.items()]
 
     def broadcast(self, except_user: Optional[str] = None):
         ''' This function retrieves a list of all client sockets except for the specified username'''

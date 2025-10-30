@@ -8,15 +8,19 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 def rsa_generate(bits: int = 2048):
     ''' 
-    This function generates an RSA private key. 
-    Input: key size in bits (default 2048)
-    Output: private key object
+    The function generates an RSA private key. 
+        Input: key size in bits (default 2048)
+        Output: private key object
     '''
     return rsa.generate_private_key(public_exponent=65537, key_size=bits)
 
 def rsa_public_pem(priv) -> str:
     ''' 
-    This function returns the PEM-encoded public key from a private key. 
+    The function returns the  public key from a private key. 
+        Input: 
+            - RSA private key object
+        Output: 
+            - PEM string of the public key
     '''
     pub = priv.public_key()
     # Encode public key in PEM format (Base64 + header/footer)
@@ -100,16 +104,16 @@ def aes_decrypt(key: bytes, nonce_b64: str, ct_b64: str, tag_b64: str, aad: byte
 def pack_encrypted(nonce_b64: str, ct_b64: str, tag_b64: str) -> dict:
     '''
     This function packs the encrypted components into a dictionary.
-    Input: Base64 strings of nonce, ciphertext, tag
-    Output: dictionary with structure {"enc": {"n": nonce, "c": ciphertext, "t": tag}}
+        Input: Base64 strings of nonce, ciphertext, tag
+        Output: dictionary with structure {"enc": {"n": nonce, "c": ciphertext, "t": tag}}
     '''
     return {"enc": {"n": nonce_b64, "c": ct_b64, "t": tag_b64}}
 
 def unpack_encrypted(d: dict) -> Tuple[str,str,str]:
     '''
     This function unpacks the encrypted components from a dictionary.
-    Input: dictionary with structure {"enc": {"n": nonce, "c": ciphertext, "t": tag}}
-    Output: tuple of Base64 strings (nonce, ciphertext, tag)
+        Input: dictionary with structure {"enc": {"n": nonce, "c": ciphertext, "t": tag}}
+        Output: tuple of Base64 strings (nonce, ciphertext, tag)
     '''
     e = d["enc"]
     return e["n"], e["c"], e["t"]
@@ -124,7 +128,13 @@ def b64d(s: str) -> bytes:
 
 
 def encrypt_body(key: bytes, body: dict) -> dict:
-    ''' This function encrypts a message body (dictionary) using AES-GCM and packs it.'''
+    ''' 
+    This function encrypts a message body (dictionary) using AES-GCM and packs it.
+    Input:
+        - key: AES key in bytes (256 bits)
+        - body: message body as a dictionary
+    Output: dictionary with structure {"enc": {"n": nonce, "c": ciphertext, "t": tag}}
+    '''
     nonce, ct, tag = aes_encrypt(key, json.dumps(body, ensure_ascii=False).encode())
     return pack_encrypted(nonce, ct, tag)
 
