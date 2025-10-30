@@ -1,18 +1,12 @@
-"""
-Login window for chatroom application.
-Allows user to enter name and choose avatar before connecting.
-"""
 import tkinter as tk
 from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
 import os
 from typing import Optional, List
 
-
 class LoginWindow:
     """
     Login window for chatroom.
-    
     Attributes:
         root: Tkinter root window
         username: Username entered by user
@@ -22,8 +16,7 @@ class LoginWindow:
     
     def __init__(self, root, error_message: Optional[str] = None):
         """
-        Initialize login window.
-        
+        Initialize login window.       
         Args:
             root: Tkinter root window
         """
@@ -75,9 +68,7 @@ class LoginWindow:
             fg="#1f1f1f"
         )
         title_label.pack(pady=(30, 10))
-        
-        # (Removed separate subtitle label; we'll use placeholder text in the entry instead.)
-        
+                
         # Frame cho username input
         username_frame = tk.Frame(self.root, bg="#f3f3f3")
         username_frame.pack(pady=20, padx=40, fill="x")

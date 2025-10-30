@@ -21,7 +21,7 @@ class NetClient:
         self.sock: Optional[socket.socket] = None
         # Backlog messages until UI attaches the handler; then flush.
         self._on_message: Optional[Callable[[Dict[str,Any]], None]] = None
-        self._backlog: List[Dict[str,Any]] = []
+        self._backlog: List[Dict[str,Any]] = []   # store message received before UI attaches
         if on_message:
             self.on_message = on_message
         self.session_key: Optional[bytes] = None   # AES session key after key-exchange
@@ -36,7 +36,7 @@ class NetClient:
     def on_message(self, cb: Optional[Callable[[Dict[str,Any]], None]]):
         self._on_message = cb
         # Flush any messages received before the UI attached
-        if cb and self._backlog:
+        if cb and self._backlog:  # If there are pending messages, replay them
             pending = self._backlog
             self._backlog = []
             for env in pending:
@@ -50,12 +50,14 @@ class NetClient:
         return datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
     def connect(self):
-        self.sock = socket.create_connection((self.host, self.port))
-        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        # Send auth with avatar_id
+        # Establish a TCP connection to the chat server.
+        self.sock = socket.create_connection((self.host, self.port)) 
+        # disable Nagle's algorithm for lower latency
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  
+        # Send auth with avatar_id and username to server
         send_json(self.sock, {"type":"auth","sender":None,"to":None,"ts":self.iso_now(),
                               "payload":{"username": self.username, "avatar_id": self.avatar_id}})
-        # Receive first response (could be RSA pub or an error)
+        # Receive first response (could be RSA pub or an error) from server
         env = recv_json(self.sock)
         # Handle duplicate username gracefully so caller can show inline error
         if env.get("type") == "error":
@@ -70,8 +72,9 @@ class NetClient:
                 raise DuplicateUsernameError("Username already exists")
             else:
                 raise RuntimeError(f"Server error: {code}")
+        # Expecting server's RSA public key
         server_pub = env["payload"]["server_pub_pem"]
-        # Generate AES session & wrap
+        # Generate AES key
         self.session_key = aes_key()
         # Encrypt the session AES key with server's RSA public key
         wrapped = rsa_wrap_key(server_pub, self.session_key)
@@ -80,7 +83,7 @@ class NetClient:
         self.running = True
         self.recv_thread = threading.Thread(target=self._recv_loop, daemon=True)
         self.recv_thread.start()
-        # Send wrapped key
+        # Send wrapped key to server ( including AES session key )
         send_json(self.sock, {"type":"key","sender":self.username,"to":None,"ts":self.iso_now(),
                               "payload":{"wrapped": wrapped}})
 
