@@ -86,6 +86,40 @@ class ChatUI(tk.Tk):
         
         self.user_frame.bind("<Configure>", update_canvas)
         self.user_canvas.bind("<Configure>", update_canvas)
+
+        # Enable two-finger trackpad scrolling (mouse wheel) for the Active user list
+        # Windows/macOS generate <MouseWheel> with event.delta; Linux uses <Button-4>/<Button-5>
+        def _ul_on_mousewheel(event):
+            try:
+                if hasattr(event, 'delta') and event.delta:
+                    step = -1 * int(event.delta / 120)
+                    self.user_canvas.yview_scroll(step, 'units')
+                elif hasattr(event, 'num'):
+                    if event.num == 4:
+                        self.user_canvas.yview_scroll(-1, 'units')
+                    elif event.num == 5:
+                        self.user_canvas.yview_scroll(1, 'units')
+            except Exception:
+                pass
+
+        def _ul_bind_mousewheel(_e=None):
+            import sys
+            if sys.platform.startswith('linux'):
+                self.user_canvas.bind_all('<Button-4>', _ul_on_mousewheel)
+                self.user_canvas.bind_all('<Button-5>', _ul_on_mousewheel)
+            else:
+                self.user_canvas.bind_all('<MouseWheel>', _ul_on_mousewheel)
+
+        def _ul_unbind_mousewheel(_e=None):
+            import sys
+            if sys.platform.startswith('linux'):
+                self.user_canvas.unbind_all('<Button-4>')
+                self.user_canvas.unbind_all('<Button-5>')
+            else:
+                self.user_canvas.unbind_all('<MouseWheel>')
+
+        self.user_canvas.bind('<Enter>', _ul_bind_mousewheel)
+        self.user_canvas.bind('<Leave>', _ul_unbind_mousewheel)
         
         # Store reference for selection
         self.users = tk.Listbox(right)  # Keep for backward compatibility with old code
