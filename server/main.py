@@ -17,7 +17,12 @@ def iso_now():
     return datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
 def send_system(msg: str, to_sock: socket.socket = None):
-    '''This function sends a system message to either a specific socket or broadcasts to all'''
+    '''
+    The function sends a system message to either a specific socket or broadcasts to all.
+        inputs:
+            - msg: the system message text
+            - to_sock: specific socket to send to (if None, broadcast to all)   
+    '''
     env = {"type":"system","sender":None,"to":"*","ts":iso_now(),"payload":{"text":msg}}
     if to_sock: # specific socket(send message to specific user)
         send_json(to_sock, env)
@@ -26,32 +31,43 @@ def send_system(msg: str, to_sock: socket.socket = None):
             send_json(s, env)
 
 def push_userlist():
-    '''This function pushes the updated user list to all clients'''
-    env = {"type":"userlist","sender":None,"to":"*","ts":iso_now(),"payload":{"users": state.users()}}
+    '''The function pushes the updated user list to all clients'''
+    users = state.users()
+    print(f"[SERVER DEBUG] Pushing userlist: {users}")  # Debug
+    env = {"type":"userlist","sender":None,"to":"*","ts":iso_now(),"payload":{"users": users}}
     for s in state.broadcast():
         send_json(s, env)
 
 def handle_client(conn: socket.socket, addr):
-    ''' This function handles communication with a connected client
+    ''' This function runs in its own thread for each client connection.
         Inputs:
-        - conn: socket object representing the client connection
-        - addr: address of the connected client 
+        - conn: the socket connection between this client and server
+        - addr: address of the connected client ( client's IP and port )
     '''
     username = None
+    client_added = False  # Track if we successfully added this client
     try:
+        # Check for authentication message
         env = recv_json(conn)
         if env.get("type") != "auth":  # Check if the first message is auth
             send_json(conn, {"type":"error","sender":None,"to":None,"ts":iso_now(),"payload":{"code":"EXPECT_AUTH"}})
-            conn.close(); return
+            conn.close(); return # if not, close the connection
 
         username = env["payload"]["username"]
-        
-        if not state.add_client(Client(username=username, sock=conn)):
+        avatar_id = env["payload"].get("avatar_id", 0)  # Get avatar_id, default 0
+        print(f"[SERVER] User '{username}' attempting to connect with avatar_id: {avatar_id}")
+        # check if username is unique and add to server state
+        if not state.add_client(Client(username=username, sock=conn, avatar_id=avatar_id)):
             # If username is already taken → reject with "DUPLICATE_USERNAME" and close
+            print(f"[SERVER] Username '{username}' already exists, rejecting new connection")
             send_json(conn, {"type":"error","sender":None,"to":None,"ts":iso_now(),"payload":{"code":"DUPLICATE_USERNAME"}})
-            conn.close(); return
+            conn.close()
+            return
+        
+        # Client was successfully added
+        client_added = True
 
-        # Send RSA public key( belong to server) for key-exchange
+        # Server send its RSA public key to this client
         send_json(conn, {"type":"key","sender":None,"to":username,"ts":iso_now(),"payload":{"server_pub_pem": RSA_PUB_PEM}})
 
         # Receive client's wrapped AES key
@@ -63,16 +79,16 @@ def handle_client(conn: socket.socket, addr):
         
         # Unwrap AES key and store in client state
         aes = rsa_unwrap_key(RSA_PRIV, env["payload"]["wrapped"])
-        c = state.get(username)
+        c = state.get(username)   # retrieve client object
         if c is not None:
             c.aes_key = aes
 
         send_system(f"{username} joined the chatroom.")
-        push_userlist()
+        push_userlist()  # push updated user list to all clients
 
-        # Main loop: route without decrypting (envelope-only)
+        # After authentication and key exchange are finished,the server enters an infinite loop to handle all future messages from that client.
         while True:
-            env = recv_json(conn)
+            env = recv_json(conn)   # Receive messages from the client
             etype = env.get("type")
             if etype in ("pub","priv","file_offer","file_chunk","file_ack"):
                 route(env)
@@ -86,7 +102,9 @@ def handle_client(conn: socket.socket, addr):
         # print for server operator
         traceback.print_exc()
     finally:
-        if username:
+        # Only remove the user if they were successfully added
+        if username and client_added:
+            print(f"[SERVER] User '{username}' disconnected, cleaning up")
             state.remove(username)
             send_system(f"{username} left the chatroom.")
             push_userlist()
@@ -98,7 +116,7 @@ def handle_client(conn: socket.socket, addr):
 def route(env: Dict[str, Any]):
     to = env.get("to")
     sender = env.get("sender")
-    cs = state.get(sender)
+    cs = state.get(sender)   # get sender's client state
     if not cs or not cs.aes_key:
         return
 

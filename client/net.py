@@ -1,44 +1,91 @@
 import socket, threading, datetime, json, os
 from queue import Queue
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Dict, Any, List
 
 from common.protocol import send_json, recv_json
 from common.crypto import aes_key, rsa_wrap_key, encrypt_body, decrypt_body
 
 ENC = "utf-8"
 
+
+class DuplicateUsernameError(Exception):
+    """Raised when the server rejects an auth because the username is already in use."""
+    pass
+
 class NetClient:
-    def __init__(self, host: str, port: int, username: str, on_message: Callable[[Dict[str,Any]], None]):
+    def __init__(self, host: str, port: int, username: str,
+                 on_message: Optional[Callable[[Dict[str,Any]], None]] = None,
+                 avatar_id: int = 0):
         self.host, self.port, self.username = host, port, username
+        self.avatar_id = avatar_id  # User's avatar ID (0-1)
         self.sock: Optional[socket.socket] = None
-        self.on_message = on_message  # callback for incoming messages
+        # Backlog messages until UI attaches the handler; then flush.
+        self._on_message: Optional[Callable[[Dict[str,Any]], None]] = None
+        self._backlog: List[Dict[str,Any]] = []   # store message received before UI attaches
+        if on_message:
+            self.on_message = on_message
         self.session_key: Optional[bytes] = None   # AES session key after key-exchange
         self.recv_thread: Optional[threading.Thread] = None   # thread for receiving messages
         self.running = False
+
+    @property
+    def on_message(self) -> Optional[Callable[[Dict[str,Any]], None]]:
+        return self._on_message
+
+    @on_message.setter
+    def on_message(self, cb: Optional[Callable[[Dict[str,Any]], None]]):
+        self._on_message = cb
+        # Flush any messages received before the UI attached
+        if cb and self._backlog:  # If there are pending messages, replay them
+            pending = self._backlog
+            self._backlog = []
+            for env in pending:
+                try:
+                    cb(env)
+                except Exception:
+                    # Ignore UI errors to avoid breaking network thread
+                    pass
 
     def iso_now(self):
         return datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
     def connect(self):
-        self.sock = socket.create_connection((self.host, self.port))
-        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        # Send auth
+        # Establish a TCP connection to the chat server.
+        self.sock = socket.create_connection((self.host, self.port)) 
+        # disable Nagle's algorithm for lower latency
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  
+        # Send auth with avatar_id and username to server
         send_json(self.sock, {"type":"auth","sender":None,"to":None,"ts":self.iso_now(),
-                              "payload":{"username": self.username}})
-        # Receive RSA pub
+                              "payload":{"username": self.username, "avatar_id": self.avatar_id}})
+        # Receive first response (could be RSA pub or an error) from server
         env = recv_json(self.sock)
+        # Handle duplicate username gracefully so caller can show inline error
+        if env.get("type") == "error":
+            code = (env.get("payload") or {}).get("code")
+            try:
+                # Close the temp socket so the client can retry cleanly
+                if self.sock:
+                    self.sock.close()
+            finally:
+                self.sock = None
+            if code == "DUPLICATE_USERNAME":
+                raise DuplicateUsernameError("Username already exists")
+            else:
+                raise RuntimeError(f"Server error: {code}")
+        # Expecting server's RSA public key
         server_pub = env["payload"]["server_pub_pem"]
-        # Generate AES session & wrap
+        # Generate AES key
         self.session_key = aes_key()
         # Encrypt the session AES key with server's RSA public key
         wrapped = rsa_wrap_key(server_pub, self.session_key)
-        # Send wrapped key
-        send_json(self.sock, {"type":"key","sender":self.username,"to":None,"ts":self.iso_now(),
-                              "payload":{"wrapped": wrapped}})
-        # Start listening for incoming messages from server
+        # Start listening for incoming messages BEFORE sending wrapped key
+        # so we catch the immediate "joined" system notification and userlist
         self.running = True
         self.recv_thread = threading.Thread(target=self._recv_loop, daemon=True)
         self.recv_thread.start()
+        # Send wrapped key to server ( including AES session key )
+        send_json(self.sock, {"type":"key","sender":self.username,"to":None,"ts":self.iso_now(),
+                              "payload":{"wrapped": wrapped}})
 
     def close(self):
         try:
@@ -68,9 +115,23 @@ class NetClient:
                "payload": encrypt_body(self.session_key, body)}
         send_json(self.sock, env)
 
-    def send_file_offer(self, to_user: str, path: str, size: int):
-        ''' Send a file offer to a specific user '''
-        meta = {"name": os.path.basename(path), "size": size}
+    def send_file_offer(self, to_user: str, path: str, size: int, file_id: str):
+        ''' Send a file offer to a specific user (or broadcast with to_user="*")
+            Includes a stable file_id so receivers can request the correct file.
+            Includes file metadata: name, size, type (extension)
+        '''
+        import os.path
+        filename = os.path.basename(path)
+        # Get file extension/type
+        _, ext = os.path.splitext(filename)
+        file_type = ext[1:] if ext else "unknown"  # Remove the dot from extension
+        
+        meta = {
+            "name": filename,
+            "size": size,
+            "type": file_type,
+            "file_id": file_id
+        }
         env = {"type":"file_offer","sender":self.username,"to":to_user,"ts":self.iso_now(),
                "payload": encrypt_body(self.session_key, meta)}
         send_json(self.sock, env)
@@ -114,9 +175,14 @@ class NetClient:
         try:
             while self.running:
                 env = recv_json(self.sock)
-                self.on_message(env)
+                if self._on_message:
+                    self._on_message(env)
+                else:
+                    # No handler yet (UI not attached) → backlog to replay later
+                    self._backlog.append(env)
         except Exception:
             # Socket closed or error; notify UI
             self.running = False
-            self.on_message({"type":"system","sender":None,"to":"*","ts":self.iso_now(),
-                             "payload":{"text":"Disconnected."}})
+            if self._on_message:
+                self._on_message({"type":"system","sender":None,"to":"*","ts":self.iso_now(),
+                                  "payload":{"text":"Disconnected."}})
