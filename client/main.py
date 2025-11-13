@@ -48,10 +48,10 @@ def main():
     ui = ChatUI(username, net, avatar_id)
     
     # Setup window close handler
-    ui.protocol("WM_DELETE_WINDOW", lambda: (net.close(), ui.destroy()))
+    ui.protocol("WM_DELETE_WINDOW", lambda: (net.close(), ui.destroy()))   # on close , close the net and destrou UI
     
     # Start UI main loop
-    ui.mainloop()
+    ui.mainloop() # run forever UI loop
 
 
 if __name__ == "__main__":

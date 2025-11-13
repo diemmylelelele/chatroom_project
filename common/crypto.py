@@ -40,7 +40,7 @@ def rsa_wrap_key(pub_pem: str, key_bytes: bytes) -> str:
     '''
     # Load the public key from PEM
     pub = serialization.load_pem_public_key(pub_pem.encode())
-    # Encrypt the AES key using RSA 
+    # Encrypt the AES key using RSA public key
     wrapped = pub.encrypt(
         key_bytes,
         padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -79,11 +79,11 @@ def aes_encrypt(key: bytes, plaintext: bytes, aad: bytes = b"") -> Tuple[str,str
     Output: tuple of Base64 strings (nonce, ciphertext, tag)
     '''
     # Create AESGCM object using provided key
-    aes = AESGCM(key)
+    aes = AESGCM(key)   # cipher instance that can both encrypt and decrypt
     nonce = os.urandom(12)  # random 96-bit nonce
     ct = aes.encrypt(nonce, plaintext, aad)  # returns ct||tag
     # cryptography puts tag at the end; but for transport we keep as one blob
-    return b64(nonce), b64(ct[:-16]), b64(ct[-16:])
+    return b64(nonce), b64(ct[:-16]), b64(ct[-16:])      # nonce, ciphertext, tag
 
 def aes_decrypt(key: bytes, nonce_b64: str, ct_b64: str, tag_b64: str, aad: bytes = b"") -> bytes:
     '''
@@ -127,7 +127,7 @@ def b64d(s: str) -> bytes:
     return base64.b64decode(s.encode())
 
 
-def encrypt_body(key: bytes, body: dict) -> dict:
+def encrypt_body(key: bytes, body: dict) -> dict: 
     ''' 
     This function encrypts a message body (dictionary) using AES-GCM and packs it.
     Input:

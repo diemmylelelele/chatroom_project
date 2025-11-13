@@ -13,14 +13,15 @@ class DuplicateUsernameError(Exception):
     pass
 
 class NetClient:
+    ''' Network client for chat application '''
     def __init__(self, host: str, port: int, username: str,
                  on_message: Optional[Callable[[Dict[str,Any]], None]] = None,
                  avatar_id: int = 0):
         self.host, self.port, self.username = host, port, username
         self.avatar_id = avatar_id  # User's avatar ID (0-1)
         self.sock: Optional[socket.socket] = None
-        # Backlog messages until UI attaches the handler; then flush.
-        self._on_message: Optional[Callable[[Dict[str,Any]], None]] = None
+        # Backlog messages until UI attaches the handler; then flush
+        self._on_message: Optional[Callable[[Dict[str,Any]], None]] = None   # when a message is received, this function will be called
         self._backlog: List[Dict[str,Any]] = []   # store message received before UI attaches
         if on_message:
             self.on_message = on_message
@@ -30,18 +31,25 @@ class NetClient:
 
     @property
     def on_message(self) -> Optional[Callable[[Dict[str,Any]], None]]:
+        ''' The callback function for handling incoming messages '''
         return self._on_message
 
-    @on_message.setter
+    @on_message.setter   
     def on_message(self, cb: Optional[Callable[[Dict[str,Any]], None]]):
+        '''
+        Set the callback for incoming messages. If there are any backlog messages received before
+        the UI attached, flush them now.
+        Input:
+            - cb: callback function that accepts a message environment dict
+        '''
         self._on_message = cb
         # Flush any messages received before the UI attached
         if cb and self._backlog:  # If there are pending messages, replay them
-            pending = self._backlog
-            self._backlog = []
-            for env in pending:
+            pending = self._backlog # make copy of temporary backlog( including old messages )
+            self._backlog = [] # clear the main backlog immediately to avoid duplication
+            for env in pending:  # loop through the pending (including old messages) 
                 try:
-                    cb(env)
+                    cb(env)   # call newly provided function for each pending(old) message
                 except Exception:
                     # Ignore UI errors to avoid breaking network thread
                     pass
@@ -51,14 +59,13 @@ class NetClient:
 
     def connect(self):
         # Establish a TCP connection to the chat server.
-        self.sock = socket.create_connection((self.host, self.port)) 
-        # disable Nagle's algorithm for lower latency
-        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)  
+        self.sock = socket.create_connection((self.host, self.port))
+        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1) # Disable Nagle's algorithm: send any data immediately
         # Send auth with avatar_id and username to server
         send_json(self.sock, {"type":"auth","sender":None,"to":None,"ts":self.iso_now(),
                               "payload":{"username": self.username, "avatar_id": self.avatar_id}})
         # Receive first response (could be RSA pub or an error) from server
-        env = recv_json(self.sock)
+        env = recv_json(self.sock)  
         # Handle duplicate username gracefully so caller can show inline error
         if env.get("type") == "error":
             code = (env.get("payload") or {}).get("code")
@@ -68,12 +75,12 @@ class NetClient:
                     self.sock.close()
             finally:
                 self.sock = None
-            if code == "DUPLICATE_USERNAME":
+            if code == "DUPLICATE_USERNAME":  # if the username is already taken
                 raise DuplicateUsernameError("Username already exists")
             else:
                 raise RuntimeError(f"Server error: {code}")
         # Expecting server's RSA public key
-        server_pub = env["payload"]["server_pub_pem"]
+        server_pub = env["payload"]["server_pub_pem"] # get user's RSA public key in PEM format
         # Generate AES key
         self.session_key = aes_key()
         # Encrypt the session AES key with server's RSA public key
@@ -83,15 +90,15 @@ class NetClient:
         self.running = True
         self.recv_thread = threading.Thread(target=self._recv_loop, daemon=True)
         self.recv_thread.start()
-        # Send wrapped key to server ( including AES session key )
+        # Send wrapped encrypted AES key to server ( including AES session key )
         send_json(self.sock, {"type":"key","sender":self.username,"to":None,"ts":self.iso_now(),
                               "payload":{"wrapped": wrapped}})
 
     def close(self):
         try:
-            if self.sock:
+            if self.sock: # if socket exists
                 send_json(self.sock, {"type":"system","sender":self.username,"to":None,"ts":self.iso_now(),
-                                      "payload":{"event":"leave"}})
+                                      "payload":{"event":"leave"}})   # notify server we are leaving
         except Exception:
             pass
         self.running = False
@@ -121,10 +128,10 @@ class NetClient:
             Includes file metadata: name, size, type (extension)
         '''
         import os.path
-        filename = os.path.basename(path)
+        filename = os.path.basename(path)   # Get the name of file ( ex: "document.pdf" )
         # Get file extension/type
-        _, ext = os.path.splitext(filename)
-        file_type = ext[1:] if ext else "unknown"  # Remove the dot from extension
+        _, ext = os.path.splitext(filename)   # split into (root, ext)
+        file_type = ext[1:] if ext else "unknown"  # get file type without dot
         
         meta = {
             "name": filename,
@@ -175,11 +182,11 @@ class NetClient:
         try:
             while self.running:
                 env = recv_json(self.sock)
-                if self._on_message:
-                    self._on_message(env)
+                if self._on_message:  # if the UI handler attached, immediately pass the received message to that callback so that UI ready to display.
+                    self._on_message(env)     
                 else:
                     # No handler yet (UI not attached) → backlog to replay later
-                    self._backlog.append(env)
+                    self._backlog.append(env)  # if the UI is not ready, store message in backlog
         except Exception:
             # Socket closed or error; notify UI
             self.running = False

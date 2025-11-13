@@ -11,7 +11,7 @@ CHUNK = 32 * 1024
 
 class ChatUI(tk.Tk):
     def __init__(self, username: str, net, avatar_id: int = 0):
-        super().__init__()
+        super().__init__() 
         # Set core state
         self.username = username
         self.avatar_id = avatar_id  # Current user's avatar ID
@@ -20,7 +20,7 @@ class ChatUI(tk.Tk):
         self.title(f"FUV Chatroom  |  User: {self.username}")
         self.geometry("900x600")
         try:
-            self.state("zoomed")
+            self.state("zoomed")  # maximize window 
         except Exception:
             try:
                 # Fallback: on some platforms, use fullscreen attribute then disable to emulate maximize
@@ -43,19 +43,19 @@ class ChatUI(tk.Tk):
         header = tk.Label(self, text=header_text, bg="#63C5DA", font=("Segoe UI", 17, "bold"), fg="white",  pady=7)
         header.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(4,6))
 
-        # message area
+        # message showing area
         frame = ttk.Frame(self)
         frame.grid(row=1, column=0, sticky="nsew", padx=(8,4))
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
-        self.text = tk.Text(frame, state="disabled", wrap="word")
+        self.text = tk.Text(frame, state="disabled", wrap="word") # create area to show text messages
         self.text.grid(row=0, column=0, sticky="nsew")
         sb = ttk.Scrollbar(frame, orient="vertical", command=self.text.yview)
         sb.grid(row=0, column=1, sticky="ns")
         self.text.configure(yscrollcommand=sb.set)
 
         # user list - replaced Listbox with Canvas to draw avatar + name
-        right = ttk.Frame(self)
+        right = ttk.Frame(self)   # right pane for user list
         right.grid(row=1, column=1, sticky="nsew", padx=(4,8))
         # Header for Active users with click-to-clear-selection
         self.active_header = ttk.Label(right, text="ACTIVE", background="#63C5DA", padding= 6,foreground="white", anchor="center", font=("Segoe UI", 10, "bold"))
@@ -63,15 +63,15 @@ class ChatUI(tk.Tk):
         self.active_header.bind("<Button-1>", lambda e: self._clear_selection())
         
         # Canvas with scrollbar for userlist
-        canvas_frame = ttk.Frame(right)
+        canvas_frame = ttk.Frame(right)  # frame to hold canvas and scrollbar
         canvas_frame.pack(fill="both", expand=True, pady=4)
         
         self.user_canvas = tk.Canvas(canvas_frame, bg="white", highlightthickness=0, width=220)
         user_scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=self.user_canvas.yview)
         self.user_canvas.configure(yscrollcommand=user_scrollbar.set)
         
-        self.user_canvas.pack(side="left", fill="both", expand=True)
-        user_scrollbar.pack(side="right", fill="y")
+        self.user_canvas.pack(side="left", fill="both", expand=True)  
+        user_scrollbar.pack(side="right", fill="y") 
         
         # Frame inside canvas to contain user items
         self.user_frame = tk.Frame(self.user_canvas, bg="white")
@@ -84,12 +84,13 @@ class ChatUI(tk.Tk):
             self.user_canvas.configure(scrollregion=self.user_canvas.bbox("all"))
             self.user_canvas.coords(self.canvas_window, 0, 0)
         
-        self.user_frame.bind("<Configure>", update_canvas)
-        self.user_canvas.bind("<Configure>", update_canvas)
+        self.user_frame.bind("<Configure>", update_canvas)  # when user_frame size changes, update canvas to have the correct scrollregion
+        self.user_canvas.bind("<Configure>", update_canvas) # when canvas size changes, update as well
 
         # Enable two-finger trackpad scrolling (mouse wheel) for the Active user list
         # Windows/macOS generate <MouseWheel> with event.delta; Linux uses <Button-4>/<Button-5>
         def _ul_on_mousewheel(event):
+            ''' Enable mouse wheel scrolling for user list '''
             try:
                 if hasattr(event, 'delta') and event.delta:
                     step = -1 * int(event.delta / 120)
@@ -103,6 +104,7 @@ class ChatUI(tk.Tk):
                 pass
 
         def _ul_bind_mousewheel(_e=None):
+            ''' Enable mouse wheel scrolling for user list '''
             import sys
             if sys.platform.startswith('linux'):
                 self.user_canvas.bind_all('<Button-4>', _ul_on_mousewheel)
@@ -111,6 +113,7 @@ class ChatUI(tk.Tk):
                 self.user_canvas.bind_all('<MouseWheel>', _ul_on_mousewheel)
 
         def _ul_unbind_mousewheel(_e=None):
+            ''' Disable mouse wheel scrolling for user list '''
             import sys
             if sys.platform.startswith('linux'):
                 self.user_canvas.unbind_all('<Button-4>')
@@ -118,8 +121,8 @@ class ChatUI(tk.Tk):
             else:
                 self.user_canvas.unbind_all('<MouseWheel>')
 
-        self.user_canvas.bind('<Enter>', _ul_bind_mousewheel)
-        self.user_canvas.bind('<Leave>', _ul_unbind_mousewheel)
+        self.user_canvas.bind('<Enter>', _ul_bind_mousewheel)  # bind when mouse enters user list
+        self.user_canvas.bind('<Leave>', _ul_unbind_mousewheel) # unbind when mouse leaves user list
         
         # Store reference for selection
         self.users = tk.Listbox(right)  # Keep for backward compatibility with old code
@@ -132,7 +135,7 @@ class ChatUI(tk.Tk):
         except Exception:
             pass
 
-        # compose area
+        # compose area: typing text message + send button + emoji button + file button
         compose = ttk.Frame(self)
         compose.grid(row=2, column=0, columnspan=2, sticky="ew", padx=8, pady=8)
         compose.columnconfigure(0, weight=1)
@@ -150,6 +153,7 @@ class ChatUI(tk.Tk):
         self._placeholder_fg = "#9e9e9e"
 
         def _apply_placeholder(_evt=None):
+            ''' Apply placeholder text if entry is empty '''
             try:
                 if not self.entry.get().strip():
                     self.entry.delete(0, "end")
@@ -160,6 +164,7 @@ class ChatUI(tk.Tk):
                 pass
 
         def _remove_placeholder(_evt=None):
+            ''' Remove placeholder text when entry gains focus '''
             try:
                 if self._has_placeholder:
                     self.entry.delete(0, "end")
@@ -168,10 +173,10 @@ class ChatUI(tk.Tk):
             except Exception:
                 pass
 
-        self.entry.bind("<FocusIn>", _remove_placeholder)
-        self.entry.bind("<FocusOut>", _apply_placeholder)
+        self.entry.bind("<FocusIn>", _remove_placeholder) # When user click or tabs into entry, remove placeholder
+        self.entry.bind("<FocusOut>", _apply_placeholder) # When entry loses focus, apply placeholder if empty
         # Initialize placeholder once widgets are laid out
-        self.after(10, _apply_placeholder)
+        self.after(10, _apply_placeholder) # apply placeholder after 10ms delay
 
         # Load icons for emoji and file buttons
         self._load_button_icons()
@@ -204,8 +209,8 @@ class ChatUI(tk.Tk):
         # Prefer a font with colored emoji on Windows
         try:
             emoji_font = ("Segoe UI Emoji", 11)
-            self.entry.configure(font=emoji_font)
-            self.text.configure(font=emoji_font)
+            self.entry.configure(font=emoji_font) # entry with emoji font
+            self.text.configure(font=emoji_font) # text area with emoji font
         except Exception:
             pass
 
@@ -214,7 +219,7 @@ class ChatUI(tk.Tk):
 
         # NOW attach the message handler - this will flush any backlogged messages
         # All widgets are created, so callbacks can safely update the UI
-        self.net.on_message = self._on_message
+        self.net.on_message = self._on_message  # It runs every time a message is received from the network. It's responsible for processing incoming data (like chats, user lists, and file offers) and updating the UI.
 
     def _load_button_icons(self):
         """
@@ -319,11 +324,12 @@ class ChatUI(tk.Tk):
             return photo
 
     def append(self, text: str, tag: Optional[str] = None):
+        ''' Append a text message to the chat area with optional tag for styling.'''
         self.text.configure(state="normal")
         if tag == "system":
             self.text.insert("end", text + "\n", ("system",))
         elif tag == "private":
-            self.text.insert("end", text + "\n", ("private",))
+            self.text.insert("end", text + "\n", ("private",)) 
         elif tag == "public":
             self.text.insert("end", text + "\n", ("public",))
         else:
@@ -336,7 +342,7 @@ class ChatUI(tk.Tk):
 
     def _append_file_message_sent(self, filename: str, size: int):
         """
-        Display file send notification on sender side (without Download button),
+        Display file send notification on sender side,
         with content format matching receiver side.
         """
         self.text.configure(state="normal")
@@ -458,6 +464,9 @@ class ChatUI(tk.Tk):
             try:
                 rest = raw[3:].strip()
                 target, msg = rest.split(" ", 1)
+                if target == self.username:
+                    self.append("(System) You cannot private-message yourself.", "system")
+                    return
                 msg = emoji.emojize(msg, language="alias")
                 self.net.send_private(target, msg)
                 self.append(f"(Private) (To {target}) ({self.ts()}): {msg}", "private")
@@ -589,18 +598,18 @@ class ChatUI(tk.Tk):
 
         # ===== BUILD EMOJI BUTTONS =====
         # Style for emoji buttons with large font
-        style = ttk.Style(win)
+        style = ttk.Style(win)   # create custom button style for emojis
         try:
             style.configure("Emoji.TButton", font=("Segoe UI Emoji", 16), padding=(4, 2))
         except Exception:
             style.configure("Emoji.TButton", padding=(4, 2))
         
         # Get list of all emojis
-        all_items = self._emoji_items()
+        all_items = self._emoji_items()   # get list of (symbol, code) tuples
 
         def render(items):
             """
-            Render grid of emoji buttons
+            Render grid of emoji buttons inside the emoji frame
             Args:
                 items: List of (symbol, code) tuples
             """
@@ -610,25 +619,24 @@ class ChatUI(tk.Tk):
             
             cols = 7  # 7 columns
             r = c = 0
-            for sym, code in items:
-                btn = ttk.Button(frame, text=sym, width=3, style="Emoji.TButton")
-                
+            for sym, code in items:  # iterate over filtered emojis
+                btn = ttk.Button(frame, text=sym, width=3, style="Emoji.TButton")  # create button with emoji symbol
                 # Insert emoji symbol into entry and close window when clicked
                 def on_click(s=sym, w=win):
-                    self._insert_symbol(s)
+                    self._insert_symbol(s)  # insert emoji into typing entry
                     try:
                         w.destroy()
                     except Exception:
                         pass
                 
-                btn.configure(command=on_click)
-                btn.grid(row=r, column=c, padx=4, pady=4)
-                c += 1
-                if c >= cols:
+                btn.configure(command=on_click)  # bind click event
+                btn.grid(row=r, column=c, padx=4, pady=4)  # place button in grid
+                c += 1   # next column
+                if c >= cols: # wrap to next row
                     r += 1
                     c = 0
 
-        def do_filter(*_):
+        def do_filter(*_): # filter function by search query
             """
             Filter emojis by search keyword
             """
@@ -744,7 +752,7 @@ class ChatUI(tk.Tk):
         filename = os.path.basename(path)
         
         # Create unique file_id for this file
-        file_id = str(uuid.uuid4())
+        file_id = str(uuid.uuid4())    # a unique id for this file transfer is created
         
         if broadcast:
             # Send to all users
@@ -911,7 +919,7 @@ class ChatUI(tk.Tk):
             self._show_file_offer_dialog(sender, name, size, file_type, file_id)
             
         elif t == "file_ack":
-            if not body.get("accept"):
+            if not body.get("accept"):    # If the file offer is not accepted
                 # Receiver declined the file
                 self.append(f"(System) ({self.ts()}) {env['sender']} declined your file.", "system")
             else:
@@ -928,8 +936,8 @@ class ChatUI(tk.Tk):
                 seq = 0
                 with open(path, "rb") as f:
                     while True:
-                        b = f.read(CHUNK)
-                        if not b:
+                        b = f.read(CHUNK)   # read file in chunks: each chunk is up to CHUNK bytes ( 32* 1024 = 32KB )
+                        if not b: 
                             # send an empty final chunk marker (bytes)
                             self.net.send_file_chunk(to_user, fid, seq, b"", True)
                             break
@@ -937,15 +945,15 @@ class ChatUI(tk.Tk):
                         self.net.send_file_chunk(to_user, fid, seq, b, False)
                         seq += 1
                 self.append(f"(System) ({self.ts()}) Finished sending '{os.path.basename(path)}' to {to_user}.", "system")
-        elif t == "file_chunk":
+        elif t == "file_chunk":  # if received a file chunk
             fid, seq, final = body["id"], body["seq"], body["final"]
-            ch = body["data"].encode("latin1")
-            ctx = self.current_downloads.get(fid)
+            ch = body["data"].encode("latin1")  # decode from latin1 back to bytes
+            ctx = self.current_downloads.get(fid)   # get current download context
             if not ctx:
                 # first chunk without offer? initialize
                 self.current_downloads[fid] = ctx = {"name":"file.bin","chunks":{}, "next":0}
             ctx["chunks"][seq] = ch
-            if final:
+            if final:   # when final chunk is received, reconstruct file
                 # All chunks received - reconstruct file in order
                 ordered = bytearray()
                 for i in range(len(ctx["chunks"])):

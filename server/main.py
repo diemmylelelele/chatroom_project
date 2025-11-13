@@ -9,8 +9,8 @@ PORT = 5050
 ENC = "utf-8"
 
 state = ServerState()
-RSA_PRIV = rsa_generate()
-RSA_PUB_PEM = rsa_public_pem(RSA_PRIV)
+RSA_PRIV = rsa_generate()   # server's RSA private key
+RSA_PUB_PEM = rsa_public_pem(RSA_PRIV)   # server's RSA public key in PEM format
 
 def iso_now():
     '''Return current UTC time in ISO format'''
@@ -31,7 +31,7 @@ def send_system(msg: str, to_sock: socket.socket = None):
             send_json(s, env)
 
 def push_userlist():
-    '''The function pushes the updated user list to all clients'''
+    '''The function pushes the updated user list( include username + corresponding avatar_id) to all clients'''
     users = state.users()
     print(f"[SERVER DEBUG] Pushing userlist: {users}")  # Debug
     env = {"type":"userlist","sender":None,"to":"*","ts":iso_now(),"payload":{"users": users}}
@@ -122,7 +122,7 @@ def route(env: Dict[str, Any]):
 
     # Decrypt body with sender's AES session key
     try:
-        body = decrypt_body(cs.aes_key, env["payload"])
+        body = decrypt_body(cs.aes_key, env["payload"]) # server decrypt body text from sender 
     except Exception:
         # If decryption fails, drop silently
         return
@@ -133,7 +133,7 @@ def route(env: Dict[str, Any]):
             try:
                 env2 = dict(env)
                 env2["to"] = "*"
-                env2["payload"] = encrypt_body(rcpt.aes_key, body)
+                env2["payload"] = encrypt_body(rcpt.aes_key, body)   # encrypt body text for each recipient
                 send_json(rcpt.sock, env2)
             except Exception:
                 continue
@@ -168,11 +168,11 @@ def route(env: Dict[str, Any]):
 
 def main():
     print(f"Server listening on {HOST}:{PORT}")
-    with socket.create_server((HOST, PORT)) as srv:
+    with socket.create_server((HOST, PORT)) as srv: # create server socket 
         while True:
-            conn, addr = srv.accept()
-            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()
+            conn, addr = srv.accept()   # accept new client connection
+            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)   # if receive data, send or read it immediately
+            threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()  # create a 
 
 if __name__ == "__main__":
     main()

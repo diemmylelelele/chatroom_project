@@ -22,7 +22,7 @@ class LoginWindow:
         """
         self.root = root
         self.root.title("ChatRoom Login")
-        self.root.geometry("560x640")
+        self.root.geometry("1200x800")
         # Allow resizing and start maximized for a full-screen experience
         try:
             self.root.resizable(True, True)
@@ -69,7 +69,7 @@ class LoginWindow:
         )
         title_label.pack(pady=(30, 10))
                 
-        # Frame cho username input
+        # Frame for username input
         username_frame = tk.Frame(self.root, bg="#f3f3f3")
         username_frame.pack(pady=20, padx=40, fill="x")
         
@@ -102,34 +102,35 @@ class LoginWindow:
             # Only clear when a real character is typed; keep placeholder otherwise
             try:
                 if self._name_placeholder_active:
-                    ch = getattr(event, "char", "")
+                    ch = getattr(event, "char", "") # try to get typed character
                     # Printable character triggers removal
                     if ch and ch.isprintable():
-                        self.username_entry.delete(0, "end")
-                        self.username_entry.configure(fg=self._name_entry_fg)
+                        self.username_entry.delete(0, "end") # remove the placeholder text ' enter your name'
+                        self.username_entry.configure(fg=self._name_entry_fg) 
                         self._name_placeholder_active = False
-                    elif event and event.keysym in ("BackSpace", "Delete"):
+                    elif event and event.keysym in ("BackSpace", "Delete"): 
                         # Ignore delete/backspace while placeholder is visible
                         return "break"
             except Exception:
                 pass
 
         def _name_focus_out(_e=None):
+            # Re-apply placeholder if entry is empty on focus out
             try:
-                if not self.username_entry.get().strip():
-                    self.username_entry.delete(0, "end")
-                    _name_apply_placeholder()
+                if not self.username_entry.get().strip():  # if entry is empty
+                    self.username_entry.delete(0, "end")   # clear any whitespace
+                    _name_apply_placeholder()  # re-apply placeholder
             except Exception:
                 pass
 
         # Initialize placeholder and bindings
         _name_apply_placeholder()
-        self.username_entry.bind("<KeyPress>", _name_remove_placeholder_if_typing)
-        self.username_entry.bind("<<Paste>>", lambda e: (_name_remove_placeholder_if_typing(e), None))
-        self.username_entry.bind("<FocusOut>", _name_focus_out)
+        self.username_entry.bind("<KeyPress>", _name_remove_placeholder_if_typing) # remove placeholder on typing
+        self.username_entry.bind("<<Paste>>", lambda e: (_name_remove_placeholder_if_typing(e), None)) # handle paste
+        self.username_entry.bind("<FocusOut>", _name_focus_out) # re-apply placeholder on focus out
         
-        # Blue underline below entry (to match mockup)
-        underline = tk.Frame(username_frame, height=2, bg="#1976D2")
+        # Blue underline below entry username box
+        underline = tk.Frame(username_frame, height=2, bg="#1976D2")  
         underline.pack(fill="x", padx=20)
         self.username_entry.focus()
 
@@ -144,8 +145,8 @@ class LoginWindow:
         )
         self.error_label.pack(fill="x", padx=20, pady=(6, 0))
         
-        # Bind Enter key for login
-        self.username_entry.bind("<Return>", lambda e: self._login())
+
+        self.username_entry.bind("<Return>", lambda e: self._login()) # connect Enter key to login
         
         # Avatar selection label
         avatar_label = tk.Label(
@@ -326,10 +327,10 @@ class LoginWindow:
         """
         # Get username from entry
         val = self.username_entry.get()
-        if getattr(self, "_name_placeholder_active", False) or val == self._name_placeholder_text:
-            username = ""
+        if getattr(self, "_name_placeholder_active", False) or val == self._name_placeholder_text: # Check if placeholder is active
+            username = ""  # treat as empty
         else:
-            username = val.strip()
+            username = val.strip()  # remove the leading/trailing whitespace
         
         # Validate username
         if not username:
@@ -382,7 +383,7 @@ def show_login(error_message: Optional[str] = None):
     """
     root = tk.Tk()
     login_window = LoginWindow(root, error_message)
-    root.mainloop()
+    root.mainloop()  # block execution until window is closed 
     
     if login_window.success:
         return login_window.username, login_window.avatar_id
@@ -390,7 +391,7 @@ def show_login(error_message: Optional[str] = None):
 
 
 if __name__ == "__main__":
-    # Test login window
+    # Get username and avatar from login window
     username, avatar_id = show_login()
     if username:
         print(f"Logged in as: {username}, Avatar: {avatar_id + 1}")
