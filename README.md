@@ -92,33 +92,7 @@ python -m server.main
 python -m client.main
 ```
 
-To connect to a remote server or a different port, pass host/port explicitly:
-
-```
-python -m client.main --host 192.168.1.50 --port 5050
-```
-
-## Load test: max concurrent joins
-
-A simple stress script is included to estimate how many clients can join concurrently on your machine/network.
-
-Fixed target (connect N clients, hold, then close):
-
-```
-python scripts/stress_join.py --clients 500 --rate 100 --hold 15 --host 127.0.0.1 --port 5050
-```
-
-Ramp until first failure (keep adding clients until a connection fails or `--max` reached):
-
-```
-python scripts/stress_join.py --until-failure --rate 200 --max 5000 --hold 10 --host 127.0.0.1 --port 5050
-```
-
-Notes:
-- Use higher `--rate` for faster ramp; reduce if the OS/network throttles.
-- Press Ctrl+C any time to stop; the script will close open connections.
-- The server imposes no explicit hard cap; limits are typically OS resources.
-
 ## Demo Usage 
-This is a [demo video] showcasing how the project runs.
+This is a [demo video](https://drive.google.com/file/d/195jKZ3GQFrh3zIdOVDhe-WfTH65JvMxe/view?usp=sharing) showcasing how the project runs.
+
 
