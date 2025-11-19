@@ -31,7 +31,7 @@ Through this project, key Computer Network principles are demonstrated — inclu
 | 11 | Graceful Exit & Errors  | Handle disconnects, invalid input, and network failures.        |
 
 ## Report 
-Detailed Report can be found [here](https://fuveduvn-my.sharepoint.com/:w:/r/personal/my_le_220050_student_fulbright_edu_vn/_layouts/15/Doc.aspx?sourcedoc=%7B2127FCEB-8F43-47D5-8466-090AD90A42DC%7D&file=Final%20Report.docx&action=default&mobileredirect=true&DefaultItemOpen=1)
+Detailed Report can be found [here](https://drive.google.com/file/d/18Zw24hqAr3qaV9iThbRUPo3ztG2Catx6/view?usp=sharing)
 
 ## Project structure
 
